@@ -1,0 +1,143 @@
+---
+title: "Topics emphasized in the curriculums for history 1960-2019"
+author: "Kirstine_Thorhauge-Ravnholt"
+date: "2/1/2023"
+output:
+  html_document:
+editor_options:
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The following contains the code and the data for my project. The goal of the project is to get a rough idea of which themes have been emphasized in the laws about the educational system through the years
+
+#Using the following packages In order to create the code I need in my project, I use the following packages:
+
+```{r}
+#install.packages("pdftools")
+#install.packages('data.table')
+
+library ("tidyverse")
+library ("here")
+library ("tidytext")
+library ("readr")
+library ("forcats")
+library ("dplyr")
+library ("widyr")
+library ("stopwords")
+library ("pdftools")
+library ("data.table")
+```
+
+# structuring the project
+
+```{r}
+# dir.create("data")
+```
+
+#Loading the data 
+The pdftools package is used to extract the text from the pdf files, using the method pdf_text. It is converted into a list of lines using strsplit(), and these lines are further converted into a vector containing these lines by using unlist(). I use the data.format - function to make a table containing a column for year and a column for the corresponding vector, containing the lines of text.
+
+```{r}
+lines_1960 <- unlist(strsplit(pdf_text("data/Educational_Goals/1960-historie.pdf"), "\n"))
+table_1960 <- data.frame(text=lines_1960, year="1960")
+lines_1974 <- unlist(strsplit(pdf_text("data/Educational_Goals/1974-historie.pdf"), "\n"))
+table_1974 <- data.frame(text=lines_1974, year="1974")
+lines_1977 <- unlist(strsplit(pdf_text("data/Educational_Goals/1977-historie.pdf"), "\n"))
+table_1977 <- data.frame(text=lines_1977, year="1977")
+lines_1981 <- unlist(strsplit(pdf_text("data/Educational_Goals/1981-historie.pdf"), "\n"))
+table_1981 <- data.frame(text=lines_1981, year="1981")
+lines_1984 <- unlist(strsplit(pdf_text("data/Educational_Goals/1984-historie.pdf"), "\n"))
+table_1984 <- data.frame(text=lines_1984, year="1984")
+lines_1995 <- unlist(strsplit(pdf_text("data/Educational_Goals/1995-historie.pdf"), "\n"))
+table_1995 <- data.frame(text=lines_1995, year="1995")
+lines_2002 <- unlist(strsplit(pdf_text("data/Educational_Goals/2002-historie.pdf"), "\n"))
+table_2002 <- data.frame(text=lines_2002, year="2002")
+lines_2004 <- unlist(strsplit(pdf_text("data/Educational_Goals/2004-historie.pdf"), "\n"))
+table_2004 <- data.frame(text=lines_2004, year="2004")
+lines_2009 <- unlist(strsplit(pdf_text("data/Educational_Goals/2009-historie.pdf"), "\n"))
+table_2009 <- data.frame(text=lines_2009, year="2009")
+lines_2015 <- unlist(strsplit(pdf_text("data/Educational_Goals/2015-historie.pdf"), "\n"))
+table_2015 <- data.frame(text=lines_2015, year="2015")
+lines_2019 <- unlist(strsplit(pdf_text("data/Educational_Goals/2019-historie.pdf"), "\n"))
+table_2019 <- data.frame(text=lines_2019, year="2019")
+
+history_goals <- rbind(table_1960, table_1974, table_1977, table_1981, table_1984, table_1995, table_2002, table_2004, table_2009, table_2015, table_2019)
+
+```
+
+#creating the stopwords
+It's important to remove the most common danish words. I use the stopwordpackage: stopwords. This package contains stopwordslists in multiple languages. I first install the package. The "da" is to specify that I want to use the danish stopwordlist. There are different variations of stopwordlists avaliable. I chose this one because it's aviable in the largest amount of languages. I use the data.frame - function to turn it into a table, since that's the is needed later in the code.
+
+Other than removing the most common danish words, I noticed that the premade danish stopword list did not include some very common abbreviations and some words commonly used in more technical texts (such as "f.eks." "fx." and "m." - the common abbreviations for "for example" and "with" and like "fig" for figure). I therefore added these stopwords to the stopwordlist. 
+
+```{r}
+#install.packages("stopwords")
+library("stopwords")
+stopwords_getsources()
+
+DanishStopwords<-c(stopwords("da", source="stopwords-iso"), "f", "x", "fx", "eks", "f.eks", "ca", "m", "fig", "for-")
+
+DanishStopwordsTable<-data.frame("word" = DanishStopwords)
+
+```
+
+#Which words stands out? 
+Tidytext and tidyverse, as the names suggest, are made to make data tidy and ready for analysis. I use the unnest_tokens() function to divide the text I have in my data frame into individual words. I use the filter() method from the dplyr package to only include words that do not appear in my stopwords list. Then I use the count() method to count the amount of times each word has been used. This way I get a table with each word and the amount of time it has been used each year. All the years are combined into one table using rbind().
+I then make a new table called dataset total_history_words. By grouping it by year and using the summarise(total=sum(n)) method, I get a column with the year and a column with the amount of total words used that year. Using left_join() I then include these new columns in the history_goals_words table that I made previously.
+The bind_tf_idf() function is used to create a statistic that account for both the frequency of the word in a certain text and how much it is used in other the other texts - the higher the frequency in one text as compared to other, the higher the "importance" of the word. 
+
+```{r}
+history_goals_words <- history_goals %>%
+  unnest_tokens(word,text) %>%
+  filter(!word %in% DanishStopwordsTable$word) %>%
+  count(year,word,sort=TRUE)
+
+total_history_goals_words <- history_goals_words %>% group_by(year) %>% summarize(total=sum(n))
+
+history_goals_words <-left_join(history_goals_words, total_history_goals_words)
+
+history_goals_tf_idf <- history_goals_words %>% bind_tf_idf(word,year,n)
+```
+
+#Visualising the data
+In order to make the data easily legible, I use a ggplot to visualise the data by making a bar chart that shows the most frequent words. I do this by grouping the results by year, using the filter() method to choose some of the years that I want to show, and using the slicemax() method to only include the top ten words. It is important to note that I did not worry much about the x-axis having different intervals, which means each chart must be read separately in order to compare the values correctly.
+
+```{r}
+history_goals_tf_idf %>%
+  group_by (year) %>%
+  filter(year == 1960 | year == 1974 | year == 1977 | year == 1981) %>%
+  slice_max(tf_idf, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf),fill=year)) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~year, ncol=2,scales="free") +
+  labs(x="tf-idf,y =NULL")
+
+history_goals_tf_idf %>%
+  group_by (year) %>%
+  filter(year == 1984 | year == 1995 | year == 2002 | year == 2004) %>%
+  slice_max(tf_idf, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf),fill=year)) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~year, ncol=2,scales="free") +
+  labs(x="tf-idf,y =NULL")
+
+history_goals_tf_idf %>%
+  group_by (year) %>%
+  filter(year == 2009 | year == 2015 | year == 2019) %>%
+  slice_max(tf_idf, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf),fill=year)) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~year, ncol=2,scales="free") +
+  labs(x="tf-idf,y =NULL")
+
+
+
+```
